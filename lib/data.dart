@@ -179,6 +179,26 @@ class Usuario {
   const Usuario({this.nome = 'Jose Mat', this.bio = 'Minha biblioteca universal de jogos', this.avatar = 0});
 }
 
+// ───── Gamificação (XP derivado da biblioteca, sem tabela nova) ─────
+// +50 XP por jogo adicionado; bônus: +20 se Jogando, +100 se Concluído.
+const xpPorNivel = 200;
+int xpDe(List<ItemBiblioteca> l) =>
+    l.fold(0, (s, i) => s + 50 + (i.status == 'Concluído' ? 100 : i.status == 'Jogando' ? 20 : 0));
+int nivelDe(int xp) => xp ~/ xpPorNivel + 1;
+String tituloDe(int n) => n < 2 ? 'Iniciante' : n < 4 ? 'Colecionador' : 'Veterano';
+
+/// Jogadores fictícios do ranking (protótipo, sem backend).
+const rivais = <(String, int)>[
+  ('PixelHunter', 640),
+  ('LunaQuest', 510),
+  ('RetroWolf', 430),
+  ('ShadowByte', 320),
+  ('GameSoul', 220),
+  ('Zenkai', 140),
+  ('NovaGirl', 90),
+  ('Maverick', 40),
+];
+
 /// Busca + estilo + plataforma juntos. Estilos/plataformas vazios = sem filtro.
 /// [plataforma] nulo = ignora filtro de plataforma (catálogo).
 bool combina({

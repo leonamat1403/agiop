@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'adicionar.dart';
 import 'data.dart';
+import 'ranking.dart';
 import 'state.dart';
 import 'ui.dart';
 
@@ -197,6 +198,8 @@ class _BibState extends State<BibliotecaScreen> {
           Padding(padding: const EdgeInsets.only(top: 16), child: Text('Nenhum jogo encontrado com esses filtros.', style: inter(14, c: cMudo))),
         const SizedBox(height: 24),
         Botao('Explorar catálogo', () => Navigator.push(context, rota('/catalogo', const CatalogoScreen()))),
+        const SizedBox(height: 10),
+        Botao('Ranking · ${st.xp} XP · Nível ${nivelDe(st.xp)}', () => Navigator.push(context, rota('/ranking', const RankingScreen()))),
       ]),
     );
   }
@@ -423,6 +426,10 @@ class _PerfilState extends State<PerfilScreen> {
           decoration: BoxDecoration(color: cSuperficie, borderRadius: BorderRadius.circular(4)),
           child: Row(children: [_stat(n, 'JOGOS'), _stat(st.jogando, 'JOGANDO'), _stat(st.concluidos, 'CONCLUÍDOS')]),
         ),
+        const SizedBox(height: 12),
+        BarraXp(st.xp),
+        const SizedBox(height: 8),
+        Botao('Ver ranking', () => Navigator.push(context, rota('/ranking', const RankingScreen())), primario: true),
         const SizedBox(height: 20),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('MINHA COLEÇÃO', style: jersey(18)),

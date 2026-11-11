@@ -254,6 +254,9 @@ class SucessoScreen extends StatelessWidget {
         Text('${item.plataformaLoja} · ${item.status}'.toUpperCase(), textAlign: TextAlign.center, style: inter(10, c: cDestaque, w: FontWeight.w700)),
         const SizedBox(height: 16),
         Text('Pronto, $nome! ${item.nome} agora faz parte da sua biblioteca de jogos.', textAlign: TextAlign.center, style: inter(10, c: cMudo)),
+        const SizedBox(height: 16),
+        Text('+${xpDe([item])} XP', textAlign: TextAlign.center, style: jersey(30, c: cDestaque)),
+        Text('Total: ${context.watch<AppState>().xp} XP · Nível ${nivelDe(context.watch<AppState>().xp)}', textAlign: TextAlign.center, style: inter(10, c: cMudo)),
       ]),
     );
   }

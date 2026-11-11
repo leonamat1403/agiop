@@ -36,6 +36,8 @@ class AppState extends ChangeNotifier {
     return l;
   }
 
+  int get xp => xpDe(itens);
+
   int get jogando => itens.where((i) => i.status == 'Jogando').length;
   int get concluidos => itens.where((i) => i.status == 'Concluído').length;
 
