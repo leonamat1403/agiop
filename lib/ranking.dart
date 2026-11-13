@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'data.dart';
@@ -20,7 +20,7 @@ class BarraXp extends StatelessWidget {
         Row(children: [
           Text('NÍVEL $n', style: jersey(22, c: cDestaque)),
           const SizedBox(width: 8),
-          Text(tituloDe(n), style: inter(10, c: cMudo, w: FontWeight.w700)),
+          Text(tituloDe(n), style: inter(12, c: cMudo, w: FontWeight.w700)),
           const Spacer(),
           Text('$xp XP', style: jersey(22)),
         ]),
@@ -30,7 +30,7 @@ class BarraXp extends StatelessWidget {
           child: LinearProgressIndicator(value: (xp % xpPorNivel) / xpPorNivel, minHeight: 6, backgroundColor: cOpcao, color: cRoxo),
         ),
         const SizedBox(height: 6),
-        Text('Faltam $falta XP para o nível ${n + 1}', style: inter(10, c: cMudo)),
+        Text('Faltam $falta XP para o nível ${n + 1}', style: inter(12, c: cMudo)),
       ]),
     );
   }
@@ -48,22 +48,22 @@ class RankingScreen extends StatelessWidget {
     return Tela(
       child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 24), children: [
         Text('RANKING', style: jersey(32)),
-        Text('Compare sua coleção com a comunidade AGIOP', style: inter(10, c: cMudo)),
+        Text('Compare sua coleção com a comunidade AGIOP', style: inter(12, c: cMudo)),
         const SizedBox(height: 16),
         Row(children: [
-          Text('SUA POSIÇÃO', style: inter(10, c: cMudo, w: FontWeight.w700)),
+          Text('SUA POSIÇÃO', style: inter(12, c: cMudo, w: FontWeight.w700)),
           const SizedBox(width: 8),
           Text('#$pos', style: jersey(30, c: cDestaque)),
         ]),
         const SizedBox(height: 8),
         BarraXp(st.xp),
         const SizedBox(height: 8),
-        Text('Ganhe XP: +50 por jogo adicionado, +20 jogando, +100 concluído.', style: inter(10, c: cMudo)),
+        Text('Ganhe XP: +50 por jogo adicionado, +20 jogando, +100 concluído.', style: inter(12, c: cMudo)),
         const SizedBox(height: 20),
         Row(children: [
-          SizedBox(width: 40, child: Text('POS.', style: inter(10, c: cMudo, w: FontWeight.w700))),
-          Expanded(child: Text('JOGADOR', style: inter(10, c: cMudo, w: FontWeight.w700))),
-          Text('XP TOTAL', style: inter(10, c: cMudo, w: FontWeight.w700)),
+          SizedBox(width: 40, child: Text('POS.', style: inter(12, c: cMudo, w: FontWeight.w700))),
+          Expanded(child: Text('JOGADOR', style: inter(12, c: cMudo, w: FontWeight.w700))),
+          Text('XP TOTAL', style: inter(12, c: cMudo, w: FontWeight.w700)),
         ]),
         const Divider(color: cBorda),
         for (var i = 0; i < todos.length; i++)
@@ -84,7 +84,7 @@ class RankingScreen extends StatelessWidget {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(todos[i].$3 ? '${todos[i].$1} (você)' : todos[i].$1, style: jersey(18)),
-                  Text('Nível ${nivelDe(todos[i].$2)} · ${tituloDe(nivelDe(todos[i].$2))}', style: inter(10, c: cMudo)),
+                  Text('Nível ${nivelDe(todos[i].$2)} · ${tituloDe(nivelDe(todos[i].$2))}', style: inter(12, c: cMudo)),
                 ]),
               ),
               Text('${todos[i].$2}', style: jersey(22, c: todos[i].$3 ? cDestaque : cTexto)),

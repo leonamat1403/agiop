@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -70,9 +70,13 @@ class Tela extends StatelessWidget {
             child: Stack(alignment: Alignment.center, children: [
               Align(
                 alignment: Alignment.centerLeft,
-                child: InkWell(
-                  onTap: onBack ?? () => Navigator.maybePop(context),
-                  child: const Icon(Icons.arrow_back, size: 22, color: cTexto),
+                child: Tooltip(
+                  message: 'Voltar',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: onBack ?? () => Navigator.maybePop(context),
+                    child: const SizedBox(width: 44, height: 44, child: Icon(Icons.arrow_back, size: 24, color: cTexto)),
+                  ),
                 ),
               ),
               Text('AGIOP', style: jersey(32)),
@@ -122,12 +126,15 @@ class Rodape extends StatelessWidget {
                 },
                 child: Center(
                   child: Opacity(
-                    opacity: !algum || st.fPlat.contains(p) ? 1 : .4,
+                    opacity: !algum || st.fPlat.contains(p) ? 1 : .45,
                     child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
+                        color: st.fPlat.contains(p) ? cOpcao : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: st.fPlat.contains(p) ? cDestaque : Colors.transparent, width: 2),
                       ),
-                      child: Image.asset(_iconePlat[p]!, width: 56, height: 40, fit: BoxFit.cover),
+                      child: Image.asset(_iconePlat[p]!, width: 48, height: 40, fit: BoxFit.contain, filterQuality: FilterQuality.high, semanticLabel: p),
                     ),
                   ),
                 ),
@@ -256,19 +263,35 @@ class Lojas extends StatelessWidget {
 class Capa extends StatelessWidget {
   const Capa(this.nome, {super.key, this.asset, this.w, this.h});
   final String nome;
-  final String? asset;
+  final String? asset; // asset local ou URL (API)
   final double? w, h;
+
+  Widget _inicial() => Container(
+        color: cOpcao,
+        alignment: Alignment.center,
+        child: Text(nome.isEmpty ? '?' : nome[0].toUpperCase(), style: jersey((h ?? 60) * .5, c: cDestaque)),
+      );
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: w,
-        height: h,
-        child: asset != null
-            ? Image.asset(asset!, fit: BoxFit.cover)
-            : Container(
-                color: cOpcao,
-                alignment: Alignment.center,
-                child: Text(nome.isEmpty ? '?' : nome[0].toUpperCase(), style: jersey(40, c: cDestaque)),
-              ),
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: SizedBox(
+          width: w,
+          height: h,
+          child: asset == null
+              ? _inicial()
+              : asset!.startsWith('http')
+                  ? Image.network(
+                      asset!,
+                      fit: BoxFit.cover,
+                      semanticLabel: 'Capa de $nome',
+                      // a API não libera CORS para imagens: no web cai para <img>
+                      webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+                      loadingBuilder: (_, child, p) => p == null ? child : Container(color: cOpcao),
+                      errorBuilder: (_, _, _) => _inicial(),
+                    )
+                  : Image.asset(asset!, fit: BoxFit.cover, semanticLabel: 'Capa de $nome'),
+        ),
       );
 }
 
@@ -292,14 +315,14 @@ class CardJogo extends StatelessWidget {
                   left: 6,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    color: cRoxo,
-                    child: Text(selo!, style: inter(10, w: FontWeight.w700)),
+                    decoration: BoxDecoration(color: cRoxo, borderRadius: BorderRadius.circular(4)),
+                    child: Text(selo!, style: inter(12, w: FontWeight.w700)),
                   ),
                 ),
             ]),
             const SizedBox(height: 8),
-            Text(nome, textAlign: TextAlign.center, style: jersey(20)),
-            if (sub != null) Text(sub!, textAlign: TextAlign.center, style: inter(12, c: cMudo)),
+            Text(nome, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: jersey(20)),
+            if (sub != null) Text(sub!, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: inter(12, c: cMudo)),
             if (status != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(status!.toUpperCase(), style: inter(12, c: cDestaque, w: FontWeight.w700))),
           ]),
         ),
@@ -307,19 +330,20 @@ class CardJogo extends StatelessWidget {
 }
 
 class TileAdicionar extends StatelessWidget {
-  const TileAdicionar(this.onTap, {super.key});
+  const TileAdicionar(this.onTap, {super.key, this.w = 100});
   final VoidCallback onTap;
+  final double w; // mesma largura dos cards
   @override
   Widget build(BuildContext context) => InkWell(
         onTap: onTap,
         child: SizedBox(
-          width: 100,
+          width: w,
           child: Column(children: [
             Container(
-              width: 100,
-              height: 100,
-              color: cOpcao,
-              child: const Icon(Icons.add, size: 56, color: cDestaque),
+              width: w,
+              height: w * .66,
+              decoration: BoxDecoration(color: cOpcao, borderRadius: BorderRadius.circular(6)),
+              child: const Icon(Icons.add, size: 48, color: cDestaque),
             ),
             const SizedBox(height: 8),
             Text('ADICIONAR JOGO', textAlign: TextAlign.center, style: jersey(18)),
@@ -334,8 +358,8 @@ class Barra extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text.rich(TextSpan(children: [
-          TextSpan(text: 'ADICIONAR JOGO', style: inter(10, c: cDestaque, w: FontWeight.w700)),
-          TextSpan(text: '  /  $etapa DE 3', style: inter(10, c: cMudo, w: FontWeight.w700)),
+          TextSpan(text: 'ADICIONAR JOGO', style: inter(12, c: cDestaque, w: FontWeight.w700)),
+          TextSpan(text: '  /  $etapa DE 3', style: inter(12, c: cMudo, w: FontWeight.w700)),
         ])),
         const SizedBox(height: 6),
         Row(children: [
@@ -356,7 +380,7 @@ class InfoBox extends StatelessWidget {
         child: Row(children: [
           for (final p in pares)
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(p.$1, style: inter(10, c: cMudo)),
+              Text(p.$1, style: inter(12, c: cMudo)),
               const SizedBox(height: 2),
               Text(p.$2, style: inter(12, w: FontWeight.w700)),
             ])),
@@ -380,7 +404,7 @@ class CartaoJogo extends StatelessWidget {
         const SizedBox(width: 14),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(nome, style: jersey(20)),
-          Text(estilo.isEmpty ? 'Sem estilo' : estilo, style: inter(10, c: cMudo)),
+          Text(estilo.isEmpty ? 'Sem estilo' : estilo, style: inter(12, c: cMudo)),
         ])),
       ]);
 }

@@ -115,11 +115,44 @@ Jogo? jogoPorNome(String nome) {
 const plataformas = ['PC', 'PlayStation', 'Xbox', 'Nintendo Switch'];
 const lojasPc = ['Steam', 'Battle.net', 'Riot Games', 'Epic Games', 'Battlestate'];
 const statusLista = ['Jogando', 'Quero jogar', 'Concluído'];
-const estilosFiltro = ['FPS', 'RPG', 'MULTIPLAYER'];
+const estilosFiltro = ['FPS', 'RPG', 'MULTIPLAYER', 'ESTRATÉGIA', 'MOBA', 'LUTA', 'CORRIDA', 'ESPORTES'];
+
+/// Converte um item da API pública FreeToGame (freetogame.com/api/games) em [Jogo].
+Jogo jogoDeApi(Map<String, dynamic> m) {
+  final g = ((m['genre'] as String?) ?? '').toLowerCase();
+  final estilo = g.contains('shooter')
+      ? 'FPS'
+      : g.contains('rpg')
+          ? 'RPG'
+          : g.contains('strateg')
+              ? 'ESTRATÉGIA'
+              : g.contains('moba')
+                  ? 'MOBA'
+                  : g.contains('fight')
+                      ? 'LUTA'
+                      : g.contains('racing')
+                          ? 'CORRIDA'
+                          : g.contains('sport')
+                              ? 'ESPORTES'
+                              : g.toUpperCase();
+  final ano = int.tryParse(((m['release_date'] as String?) ?? '').split('-').first) ?? 0;
+  return Jogo(
+    id: 'ftg${m['id']}',
+    nome: ((m['title'] as String?) ?? '?').toUpperCase(),
+    desenvolvedora: (m['developer'] as String?) ?? '',
+    descricao: (m['short_description'] as String?) ?? '',
+    estilos: [if (estilo.isNotEmpty) estilo, 'MULTIPLAYER'],
+    lancamento: ano,
+    popularidade: 30,
+    lojaPc: 'Steam',
+    onde: 'PC',
+    capa: m['thumbnail'] as String?,
+  );
+}
 
 class ItemBiblioteca {
   final int? id;
-  final String? jogoId;
+  final String? jogoId, capa; // capa: asset local ou URL da API
   final String nome, desenvolvedora, plataforma, status;
   final String? loja;
   final List<String> estilos;
@@ -127,6 +160,7 @@ class ItemBiblioteca {
   const ItemBiblioteca({
     this.id,
     this.jogoId,
+    this.capa,
     required this.nome,
     required this.desenvolvedora,
     required this.estilos,
@@ -136,6 +170,7 @@ class ItemBiblioteca {
   });
 
   Jogo? get jogo => jogoPorId(jogoId);
+  String? get imagem => capa ?? jogo?.capa;
   String get plataformaLoja => loja == null ? plataforma : '$plataforma · $loja';
   int get popularidade => jogo?.popularidade ?? 0;
 
@@ -143,6 +178,7 @@ class ItemBiblioteca {
       ItemBiblioteca(
         id: id,
         jogoId: jogoId,
+        capa: capa,
         nome: nome,
         desenvolvedora: desenvolvedora,
         estilos: estilos,
@@ -153,6 +189,7 @@ class ItemBiblioteca {
 
   Map<String, Object?> toMap() => {
         'jogo_id': jogoId,
+        'capa': capa,
         'nome': nome,
         'desenvolvedora': desenvolvedora,
         'estilos': estilos.join(','),
@@ -164,6 +201,7 @@ class ItemBiblioteca {
   static ItemBiblioteca fromMap(Map<String, Object?> m) => ItemBiblioteca(
         id: m['id'] as int,
         jogoId: m['jogo_id'] as String?,
+        capa: m['capa'] as String?,
         nome: m['nome'] as String,
         desenvolvedora: (m['desenvolvedora'] as String?) ?? '',
         estilos: ((m['estilos'] as String?) ?? '').split(',').where((e) => e.isNotEmpty).toList(),

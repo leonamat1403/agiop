@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'data.dart';
@@ -40,9 +40,12 @@ class _AddState extends State<AdicionarScreen> {
       });
 
   Future<void> _salvar() async {
+    final st = context.read<AppState>();
     final nome = _nome.text.trim().toUpperCase();
+    final ref = _sel ?? st.acharNome(nome);
     final item = ItemBiblioteca(
-      jogoId: _sel?.id ?? jogoPorNome(nome)?.id,
+      jogoId: ref?.id,
+      capa: ref?.capa,
       nome: nome,
       desenvolvedora: _dev.text.trim(),
       estilos: _estilosDe(_estilo.text),
@@ -50,7 +53,7 @@ class _AddState extends State<AdicionarScreen> {
       loja: _plat == 'PC' ? _loja : null,
       status: _status,
     );
-    if (!await context.read<AppState>().adicionar(item)) {
+    if (!await st.adicionar(item)) {
       if (mounted) aviso(context, '$nome já está na sua biblioteca em $_plat.');
       return;
     }
@@ -59,16 +62,17 @@ class _AddState extends State<AdicionarScreen> {
 
   Widget _cartao() {
     final nome = _nome.text.trim().toUpperCase();
-    final j = _sel ?? jogoPorNome(nome);
+    final j = _sel ?? context.read<AppState>().acharNome(nome);
     return CartaoJogo(nome, bonito(_estilosDe(_estilo.text)), asset: j?.capa);
   }
 
   @override
   Widget build(BuildContext context) {
     final txt = _nome.text.trim();
-    final sug = txt.isEmpty || jogoPorNome(txt) != null
+    final st = context.watch<AppState>();
+    final sug = txt.isEmpty || st.acharNome(txt) != null
         ? <Jogo>[]
-        : catalogo.where((j) => j.nome.toLowerCase().contains(txt.toLowerCase())).toList();
+        : st.catalogoTodo.where((j) => j.nome.toLowerCase().contains(txt.toLowerCase())).take(5).toList();
     return PopScope(
       canPop: _etapa == 1,
       onPopInvokedWithResult: (didPop, _) {
@@ -145,7 +149,7 @@ class _AddState extends State<AdicionarScreen> {
             const SizedBox(height: 8),
             for (final s in statusLista) Opcao(s, _status == s, () => setState(() => _status = s)),
             const SizedBox(height: 8),
-            Text('${_nome.text.trim().toUpperCase()} será salvo na sua biblioteca.', style: inter(10, c: cMudo)),
+            Text('${_nome.text.trim().toUpperCase()} será salvo na sua biblioteca.', style: inter(12, c: cMudo)),
           ],
         ]),
       ),
@@ -172,6 +176,7 @@ class _AddCatState extends State<AdicionarCatalogo> {
     final pc = _plat.startsWith('PC · ');
     final item = ItemBiblioteca(
       jogoId: j.id,
+      capa: j.capa,
       nome: j.nome,
       desenvolvedora: j.desenvolvedora,
       estilos: j.estilos,
@@ -217,7 +222,7 @@ class _AddCatState extends State<AdicionarCatalogo> {
         const SizedBox(height: 8),
         for (final s in statusLista) Opcao(s, _status == s, () => setState(() => _status = s)),
         const SizedBox(height: 8),
-        Text(outros.isEmpty ? 'Salve ${j.nome} na sua coleção.' : 'Salve ${j.nome} junto de ${outros.join(', ')} na sua coleção.', style: inter(10, c: cMudo)),
+        Text(outros.isEmpty ? 'Salve ${j.nome} na sua coleção.' : 'Salve ${j.nome} junto de ${outros.join(', ')} na sua coleção.', style: inter(12, c: cMudo)),
       ]),
     );
   }
@@ -247,16 +252,16 @@ class SucessoScreen extends StatelessWidget {
         const SizedBox(height: 24),
         Text('JOGO ADICIONADO!', textAlign: TextAlign.center, style: jersey(30)),
         const SizedBox(height: 20),
-        LayoutBuilder(builder: (_, c) => Capa(item.nome, asset: item.jogo?.capa, w: c.maxWidth, h: c.maxWidth * .5)),
+        LayoutBuilder(builder: (_, c) => Capa(item.nome, asset: item.imagem, w: c.maxWidth, h: c.maxWidth * .5)),
         const SizedBox(height: 20),
         Text(item.nome, textAlign: TextAlign.center, style: jersey(26)),
         const SizedBox(height: 4),
-        Text('${item.plataformaLoja} · ${item.status}'.toUpperCase(), textAlign: TextAlign.center, style: inter(10, c: cDestaque, w: FontWeight.w700)),
+        Text('${item.plataformaLoja} · ${item.status}'.toUpperCase(), textAlign: TextAlign.center, style: inter(12, c: cDestaque, w: FontWeight.w700)),
         const SizedBox(height: 16),
-        Text('Pronto, $nome! ${item.nome} agora faz parte da sua biblioteca de jogos.', textAlign: TextAlign.center, style: inter(10, c: cMudo)),
+        Text('Pronto, $nome! ${item.nome} agora faz parte da sua biblioteca de jogos.', textAlign: TextAlign.center, style: inter(12, c: cMudo)),
         const SizedBox(height: 16),
         Text('+${xpDe([item])} XP', textAlign: TextAlign.center, style: jersey(30, c: cDestaque)),
-        Text('Total: ${context.watch<AppState>().xp} XP · Nível ${nivelDe(context.watch<AppState>().xp)}', textAlign: TextAlign.center, style: inter(10, c: cMudo)),
+        Text('Total: ${context.watch<AppState>().xp} XP · Nível ${nivelDe(context.watch<AppState>().xp)}', textAlign: TextAlign.center, style: inter(12, c: cMudo)),
       ]),
     );
   }

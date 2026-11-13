@@ -11,7 +11,6 @@ Future<void> main() async {
   final db = Db();
   await db.abrir();
   final st = AppState(db);
-  await st.carregar();
   runApp(ChangeNotifierProvider.value(value: st, child: const AgiopApp()));
 }
 

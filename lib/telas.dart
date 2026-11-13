@@ -65,9 +65,8 @@ class _LoginState extends State<LoginScreen> {
     await _ir(_u.text.trim());
   }
 
-  Future<void> _ir(String nome) async {
-    final st = context.read<AppState>();
-    await st.salvarUsuario(Usuario(nome: nome, bio: st.usuario.bio, avatar: st.usuario.avatar));
+  Future<void> _ir(String nome, {bool visitante = false}) async {
+    await context.read<AppState>().entrar(nome, ehVisitante: visitante);
     if (mounted) Navigator.pushReplacement(context, rota('/lib', const BibliotecaScreen()));
   }
 
@@ -108,10 +107,10 @@ class _LoginState extends State<LoginScreen> {
                   ),
                   child: Text('Esqueci minha senha', style: inter(12, c: const Color(0xFF8B6FD1))),
                 ),
-                // usuário demo: entra sem senha (só protótipo)
+                // visitante: sem senha, dados temporários (apagados a cada entrada)
                 TextButton(
-                  onPressed: () => _ir('Jose Mat'),
-                  child: Text('Entrar como Jose Mat (demo, sem senha)', style: inter(12, c: cDestaque)),
+                  onPressed: () => _ir('Visitante', visitante: true),
+                  child: Text('Entrar como visitante', style: inter(14, c: cDestaque, w: FontWeight.w600)),
                 ),
               ]),
             ),
@@ -138,7 +137,10 @@ class _BibState extends State<BibliotecaScreen> {
   }
 
   Future<void> _sair() async {
-    if (await confirmar(context, 'Sair?', 'Voltar para a tela de login?', 'Sair') && mounted) {
+    final st = context.read<AppState>();
+    final aviso = st.visitante ? 'Os dados do visitante serão apagados ao sair. Voltar para o login?' : 'Voltar para a tela de login? Sua biblioteca fica salva nesta conta.';
+    if (await confirmar(context, 'Sair?', aviso, 'Sair') && mounted) {
+      st.sair();
       Navigator.pushAndRemoveUntil(context, rota('/login', const LoginScreen()), (_) => false);
     }
   }
@@ -164,10 +166,11 @@ class _BibState extends State<BibliotecaScreen> {
       ),
       child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 24), children: [
         Text('BIBLIOTECA', style: jersey(32)),
-        Text('$n ${n == 1 ? 'jogo' : 'jogos'} · ${st.ultimoAdd != null ? '${st.ultimoAdd} adicionado à biblioteca' : 'Sua coleção em um só lugar'}', style: inter(10, c: cMudo)),
+        Text('$n ${n == 1 ? 'jogo' : 'jogos'} · ${st.ultimoAdd != null ? '${st.ultimoAdd} adicionado à biblioteca' : 'Sua coleção em um só lugar'}', style: inter(12, c: cMudo)),
         const SizedBox(height: 20),
         Row(children: [
-          InkWell(onTap: () => _key.currentState?.openEndDrawer(), child: const Padding(padding: EdgeInsets.only(right: 10), child: Icon(Icons.filter_alt_outlined, size: 36, color: cRoxo))),
+          IconButton(tooltip: 'Filtros', iconSize: 32, color: cRoxo, onPressed: () => _key.currentState?.openEndDrawer(), icon: const Icon(Icons.filter_alt_outlined)),
+          const SizedBox(width: 4),
           Expanded(child: Campo(hint: 'Pesquise por Jogos', ctl: _busca, sufixo: Icons.search, onChanged: (v) => st.alterar(() => st.busca = v))),
         ]),
         if (st.fPlat.isNotEmpty || st.fEstilos.isNotEmpty || st.populares)
@@ -186,12 +189,12 @@ class _BibState extends State<BibliotecaScreen> {
               CardJogo(
                 nome: i.nome,
                 w: w,
-                asset: i.jogo?.capa,
+                asset: i.imagem,
                 sub: i.plataformaLoja,
                 status: i.status,
                 onTap: () => Navigator.push(context, rota('/meujogo', MeuJogoScreen(i.id!))),
               ),
-            SizedBox(width: w, child: Align(alignment: Alignment.topLeft, child: TileAdicionar(() => Navigator.push(context, rota('/add', const AdicionarScreen()))))),
+            TileAdicionar(() => Navigator.push(context, rota('/add', const AdicionarScreen())), w: w),
           ]);
         }),
         if (n > 0 && lista.isEmpty)
@@ -221,7 +224,7 @@ class _CatState extends State<CatalogoScreen> {
   @override
   Widget build(BuildContext context) {
     final st = context.watch<AppState>();
-    final lista = catalogo.where((j) => combina(nome: j.nome, estilos: j.estilos, busca: _busca, filtroEstilos: _estilos, filtroPlataformas: const {})).toList();
+    final lista = st.catalogoTodo.where((j) => combina(nome: j.nome, estilos: j.estilos, busca: _busca, filtroEstilos: _estilos, filtroPlataformas: const {})).toList();
     if (_pop) lista.sort((a, b) => b.popularidade.compareTo(a.popularidade));
     return Tela(
       scaffoldKey: _key,
@@ -236,29 +239,56 @@ class _CatState extends State<CatalogoScreen> {
           _busca = '';
         }),
       ),
-      child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 24), children: [
-        Text('CATÁLOGO', style: jersey(32)),
-        const SizedBox(height: 14),
-        Row(children: [
-          InkWell(onTap: () => _key.currentState?.openEndDrawer(), child: const Padding(padding: EdgeInsets.only(right: 10), child: Icon(Icons.filter_alt_outlined, size: 36, color: cRoxo))),
-          Expanded(child: Campo(hint: 'Pesquise por Jogos', sufixo: Icons.search, onChanged: (v) => setState(() => _busca = v))),
-        ]),
-        const SizedBox(height: 20),
-        LayoutBuilder(builder: (_, c) {
-          final w = (c.maxWidth - 16) / 2;
-          return Wrap(spacing: 16, runSpacing: 20, children: [
-            for (final j in lista)
-              CardJogo(
-                nome: j.nome,
-                w: w,
-                asset: j.capa,
-                selo: st.itens.any((i) => i.jogoId == j.id) ? 'NA BIBLIOTECA' : null,
-                onTap: () => Navigator.push(context, rota('/catdetalhe', CatalogoDetalhe(j))),
+      child: LayoutBuilder(builder: (_, c) {
+        final w = (c.maxWidth - 48 - 16) / 2; // margens de 24 + espaço entre colunas
+        return CustomScrollView(slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+            sliver: SliverList.list(children: [
+              Text('CATÁLOGO', style: jersey(32)),
+              Text(
+                st.carregandoOnline ? 'Carregando jogos online…' : '${lista.length} jogos${st.online.isNotEmpty ? ' · dados da API FreeToGame' : ''}',
+                style: inter(12, c: cMudo),
               ),
-          ]);
-        }),
-        if (lista.isEmpty) Text('Nenhum jogo encontrado.', style: inter(14, c: cMudo)),
-      ]),
+              const SizedBox(height: 14),
+              Row(children: [
+                IconButton(tooltip: 'Filtros', iconSize: 32, color: cRoxo, onPressed: () => _key.currentState?.openEndDrawer(), icon: const Icon(Icons.filter_alt_outlined)),
+                const SizedBox(width: 4),
+                Expanded(child: Campo(hint: 'Pesquise por Jogos', sufixo: Icons.search, onChanged: (v) => setState(() => _busca = v))),
+              ]),
+              if (st.carregandoOnline) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator(color: cRoxo, backgroundColor: cOpcao)),
+              if (st.erroOnline != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(children: [
+                    Expanded(child: Text(st.erroOnline!, style: inter(12, c: const Color(0xFFF87171)))),
+                    TextButton(onPressed: st.carregarOnline, child: Text('Tentar de novo', style: inter(12, c: cDestaque, w: FontWeight.w700))),
+                  ]),
+                ),
+              const SizedBox(height: 8),
+            ]),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            sliver: lista.isEmpty
+                ? SliverToBoxAdapter(child: Text('Nenhum jogo encontrado.', style: inter(14, c: cMudo)))
+                : SliverGrid.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, mainAxisExtent: w * .66 + 76),
+                    itemCount: lista.length,
+                    itemBuilder: (_, k) {
+                      final j = lista[k];
+                      return CardJogo(
+                        nome: j.nome,
+                        w: w,
+                        asset: j.capa,
+                        selo: st.itens.any((i) => i.jogoId == j.id || i.nome == j.nome) ? 'NA BIBLIOTECA' : null,
+                        onTap: () => Navigator.push(context, rota('/catdetalhe', CatalogoDetalhe(j))),
+                      );
+                    },
+                  ),
+          ),
+        ]);
+      }),
     );
   }
 }
@@ -266,16 +296,16 @@ class _CatState extends State<CatalogoScreen> {
 // ───────────────────────── Detalhes ─────────────────────────
 Widget _blocoDetalhe(String trilha, String nome, String? capa, String estilo, String descricao, List<(String, String)> infos) =>
     Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(trilha, style: inter(10, c: cDestaque, w: FontWeight.w700)),
+      Text(trilha, style: inter(12, c: cDestaque, w: FontWeight.w700)),
       const SizedBox(height: 10),
       LayoutBuilder(builder: (_, c) => Capa(nome, asset: capa, w: c.maxWidth, h: c.maxWidth * .5)),
       const SizedBox(height: 16),
       Text(nome, style: jersey(26)),
-      Text(estilo, style: inter(10, c: cDestaque, w: FontWeight.w700)),
+      Text(estilo, style: inter(12, c: cDestaque, w: FontWeight.w700)),
       const SizedBox(height: 14),
       Text('SOBRE O JOGO', style: jersey(18)),
       const SizedBox(height: 4),
-      Text(descricao, style: inter(10, c: cMudo)),
+      Text(descricao, style: inter(12, c: cMudo)),
       const SizedBox(height: 14),
       InfoBox(infos),
     ]);
@@ -292,7 +322,7 @@ class CatalogoDetalhe extends StatelessWidget {
         _blocoDetalhe('CATÁLOGO / ${j.estilos.first}', j.nome, j.capa, '${j.estilos.join(' · ')} · ${j.onde}', j.descricao,
             [('Desenvolvedora', j.desenvolvedora), ('Lançamento', '${j.lancamento}')]),
         if (meus.isNotEmpty)
-          Padding(padding: const EdgeInsets.only(top: 12), child: Text('Na sua biblioteca: ${meus.map((i) => i.plataformaLoja).join(', ')}', style: inter(10, c: cDestaque))),
+          Padding(padding: const EdgeInsets.only(top: 12), child: Text('Na sua biblioteca: ${meus.map((i) => i.plataformaLoja).join(', ')}', style: inter(12, c: cDestaque))),
       ]),
     );
   }
@@ -356,11 +386,11 @@ class MeuJogoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final it = context.watch<AppState>().porId(id);
     if (it == null) return const Scaffold(backgroundColor: cFundo);
-    final j = it.jogo;
+    final j = context.watch<AppState>().achar(it.jogoId) ?? it.jogo;
     return Tela(
       acao: Botao('Editar na biblioteca', () => _editar(context, it)),
       child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 16), children: [
-        _blocoDetalhe('BIBLIOTECA / MEU JOGO', it.nome, j?.capa, [...it.estilos, it.plataforma].join(' · '),
+        _blocoDetalhe('BIBLIOTECA / MEU JOGO', it.nome, it.imagem, [...it.estilos, it.plataforma].join(' · '),
             j?.descricao ?? 'Jogo adicionado manualmente à sua biblioteca.',
             [('Desenvolvedora', it.desenvolvedora.isEmpty ? '—' : it.desenvolvedora), ('Minha coleção', '${it.status} · ${it.plataforma}')]),
       ]),
@@ -399,7 +429,7 @@ class _PerfilState extends State<PerfilScreen> {
   }
 
   Widget _stat(int n, String t) => Expanded(
-        child: Column(children: [Text('$n', style: jersey(30)), Text(t, style: inter(10, c: cMudo, w: FontWeight.w700))]),
+        child: Column(children: [Text('$n', style: jersey(30)), Text(t, style: inter(12, c: cMudo, w: FontWeight.w700))]),
       );
 
   @override
@@ -418,7 +448,7 @@ class _PerfilState extends State<PerfilScreen> {
             child: Avatar(st.usuario.avatar, size: 56),
           ),
           const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(st.usuario.nome, style: jersey(26)), Text(st.usuario.bio, maxLines: 2, overflow: TextOverflow.ellipsis, style: inter(10, c: cMudo))])),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(st.usuario.nome, style: jersey(26)), Text(st.usuario.bio, maxLines: 2, overflow: TextOverflow.ellipsis, style: inter(12, c: cMudo))])),
         ]),
         const SizedBox(height: 16),
         Container(
@@ -433,10 +463,10 @@ class _PerfilState extends State<PerfilScreen> {
         const SizedBox(height: 20),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('MINHA COLEÇÃO', style: jersey(18)),
-          InkWell(onTap: () => Navigator.popUntil(context, (r) => r.settings.name == '/lib'), child: Text('TODOS', style: inter(10, c: cDestaque, w: FontWeight.w700))),
+          InkWell(onTap: () => Navigator.popUntil(context, (r) => r.settings.name == '/lib'), child: Text('TODOS', style: inter(12, c: cDestaque, w: FontWeight.w700))),
         ]),
         const SizedBox(height: 8),
-        if (n == 0) Text('Nenhum jogo ainda. Adicione o primeiro na biblioteca.', style: inter(10, c: cMudo)),
+        if (n == 0) Text('Nenhum jogo ainda. Adicione o primeiro na biblioteca.', style: inter(12, c: cMudo)),
         for (var k = 0; k < n; k++) ...[
           if (k > 0) const Divider(color: cBorda, height: 1),
           InkWell(
@@ -444,15 +474,15 @@ class _PerfilState extends State<PerfilScreen> {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(children: [
-                Capa(st.itens[k].nome, asset: st.itens[k].jogo?.capa, w: 72, h: 46),
+                Capa(st.itens[k].nome, asset: st.itens[k].imagem, w: 72, h: 46),
                 const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(st.itens[k].nome, style: jersey(18)), Text(st.itens[k].plataformaLoja, style: inter(10, c: cMudo))])),
-                Text(st.itens[k].status.toUpperCase(), style: inter(10, c: cDestaque, w: FontWeight.w700)),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(st.itens[k].nome, style: jersey(18)), Text(st.itens[k].plataformaLoja, style: inter(12, c: cMudo))])),
+                Text(st.itens[k].status.toUpperCase(), style: inter(12, c: cDestaque, w: FontWeight.w700)),
               ]),
             ),
           ),
         ],
-        if (n > 0) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${n == 1 ? 'Um jogo' : '$n jogos'}, uma biblioteca. Continue sua coleção explorando o catálogo.', style: inter(10, c: cMudo))),
+        if (n > 0) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${n == 1 ? 'Um jogo' : '$n jogos'}, uma biblioteca. Continue sua coleção explorando o catálogo.', style: inter(12, c: cMudo))),
         const SizedBox(height: 16),
         Botao('Ver biblioteca completa', () => Navigator.popUntil(context, (r) => r.settings.name == '/lib')),
         const SizedBox(height: 28),
@@ -479,7 +509,10 @@ class _PerfilState extends State<PerfilScreen> {
         const SizedBox(height: 14),
         Botao('Salvar alterações', _salvar, primario: true),
         const SizedBox(height: 8),
-        Botao('Sair', () => Navigator.pushAndRemoveUntil(context, rota('/login', const LoginScreen()), (_) => false), cor: const Color(0xFFF87171)),
+        Botao('Sair', () {
+          st.sair();
+          Navigator.pushAndRemoveUntil(context, rota('/login', const LoginScreen()), (_) => false);
+        }, cor: const Color(0xFFF87171)),
       ]),
     );
   }
