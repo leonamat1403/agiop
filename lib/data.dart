@@ -1,4 +1,4 @@
-// Modelos, catálogo fixo e regra de filtro (pura, testada em test/filtro_test.dart).
+﻿// Modelos, catálogo fixo e regra de filtro (pura, testada em test/filtro_test.dart).
 
 class Jogo {
   final String id, nome, desenvolvedora, descricao, lojaPc, onde;
@@ -58,6 +58,7 @@ const catalogo = <Jogo>[
     popularidade: 85,
     lojaPc: 'Steam',
     onde: 'PC · CONSOLES',
+    capa: 'assets/r6.png',
   ),
   Jogo(
     id: 'csgo',
@@ -70,6 +71,7 @@ const catalogo = <Jogo>[
     popularidade: 95,
     lojaPc: 'Steam',
     onde: 'PC',
+    capa: 'assets/csgo.png',
   ),
   Jogo(
     id: 'tarkov',
@@ -82,6 +84,7 @@ const catalogo = <Jogo>[
     popularidade: 70,
     lojaPc: 'Battlestate',
     onde: 'PC',
+    capa: 'assets/tarkov.png',
   ),
   Jogo(
     id: 'l4d2',
@@ -94,6 +97,7 @@ const catalogo = <Jogo>[
     popularidade: 60,
     lojaPc: 'Steam',
     onde: 'PC · XBOX',
+    capa: 'assets/l4d2.png',
   ),
 ];
 
@@ -150,65 +154,125 @@ Jogo jogoDeApi(Map<String, dynamic> m) {
   );
 }
 
+/// Plataforma em que o jogo está na coleção (PC pode ter loja: Steam, Battle.net...).
+class Plat {
+  final String nome;
+  final String? loja;
+  const Plat(this.nome, [this.loja]);
+  String get rotulo => loja == null ? nome : '$nome · $loja';
+
+  @override
+  bool operator ==(Object other) => other is Plat && other.nome == nome && other.loja == loja;
+  @override
+  int get hashCode => Object.hash(nome, loja);
+}
+
+const _acentos = {
+  'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+  'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i', 'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+  'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c', 'ñ': 'n',
+};
+
+/// Nome normalizado para comparar jogos (sem acento, símbolos ™/®, pontuação ou caixa).
+String normalizar(String s) {
+  final b = StringBuffer();
+  for (final c in s.toLowerCase().split('')) {
+    b.write(_acentos[c] ?? c);
+  }
+  return b.toString().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+}
+
+/// Regra única de duplicidade (biblioteca manual e sincronização).
+/// Prioridade: 1) ID externo, 2) ID do catálogo interno, 3) nome normalizado.
+bool mesmoJogo({String? idExternoA, String? jogoIdA, required String nomeA, String? idExternoB, String? jogoIdB, required String nomeB}) {
+  if (idExternoA != null && idExternoB != null && idExternoA == idExternoB) return true;
+  if (jogoIdA != null && jogoIdB != null && jogoIdA == jogoIdB) return true;
+  final a = normalizar(nomeA), b = normalizar(nomeB);
+  return a.isNotEmpty && a == b;
+}
+
 class ItemBiblioteca {
   final int? id;
-  final String? jogoId, capa; // capa: asset local ou URL da API
-  final String nome, desenvolvedora, plataforma, status;
-  final String? loja;
+  final String? jogoId, idExterno, capa; // capa: asset local ou URL da API
+  final String nome, desenvolvedora, status;
+  final List<Plat> plataformas; // 1 ou mais
   final List<String> estilos;
 
   const ItemBiblioteca({
     this.id,
     this.jogoId,
+    this.idExterno,
     this.capa,
     required this.nome,
     required this.desenvolvedora,
     required this.estilos,
-    required this.plataforma,
-    this.loja,
+    required this.plataformas,
     required this.status,
   });
 
   Jogo? get jogo => jogoPorId(jogoId);
   String? get imagem => capa ?? jogo?.capa;
-  String get plataformaLoja => loja == null ? plataforma : '$plataforma · $loja';
   int get popularidade => jogo?.popularidade ?? 0;
 
-  ItemBiblioteca copyWith({String? plataforma, String? loja, String? status}) =>
-      ItemBiblioteca(
+  bool temPlataforma(String nome) => plataformas.any((p) => p.nome == nome);
+
+  /// "PC · Xbox · PlayStation"
+  String get plataformasResumo => plataformas.map((p) => p.nome).toSet().join(' · ');
+
+  /// "PC · Steam, Xbox" (com lojas)
+  String get rotulos => plataformas.map((p) => p.rotulo).join(', ');
+
+  /// Texto curto para cards: 1 plataforma mostra a loja ("PC · Battle.net"), 2+ mostram só os nomes.
+  String get subCard => plataformas.length == 1 ? plataformas.first.rotulo : plataformasResumo;
+
+  bool igualA({String? idExterno, String? jogoId, required String nome}) => mesmoJogo(
+      idExternoA: this.idExterno, jogoIdA: this.jogoId, nomeA: this.nome, idExternoB: idExterno, jogoIdB: jogoId, nomeB: nome);
+
+  ItemBiblioteca copyWith({List<Plat>? plataformas, String? status}) => ItemBiblioteca(
         id: id,
         jogoId: jogoId,
+        idExterno: idExterno,
         capa: capa,
         nome: nome,
         desenvolvedora: desenvolvedora,
         estilos: estilos,
-        plataforma: plataforma ?? this.plataforma,
-        loja: (plataforma ?? this.plataforma) == 'PC' ? (loja ?? this.loja) : null,
+        plataformas: plataformas ?? this.plataformas,
         status: status ?? this.status,
       );
 
+  /// Linha da tabela `item`. As plataformas ficam em `item_plataforma`;
+  /// `plataforma`/`loja` guardam só a primeira (compatibilidade com o esquema antigo).
   Map<String, Object?> toMap() => {
         'jogo_id': jogoId,
+        'id_externo': idExterno,
         'capa': capa,
         'nome': nome,
         'desenvolvedora': desenvolvedora,
         'estilos': estilos.join(','),
-        'plataforma': plataforma,
-        'loja': loja,
+        'plataforma': plataformas.first.nome,
+        'loja': plataformas.first.loja,
         'status': status,
       };
 
-  static ItemBiblioteca fromMap(Map<String, Object?> m) => ItemBiblioteca(
+  static ItemBiblioteca fromMap(Map<String, Object?> m, List<Plat> plataformas) => ItemBiblioteca(
         id: m['id'] as int,
         jogoId: m['jogo_id'] as String?,
+        idExterno: m['id_externo'] as String?,
         capa: m['capa'] as String?,
         nome: m['nome'] as String,
         desenvolvedora: (m['desenvolvedora'] as String?) ?? '',
         estilos: ((m['estilos'] as String?) ?? '').split(',').where((e) => e.isNotEmpty).toList(),
-        plataforma: m['plataforma'] as String,
-        loja: m['loja'] as String?,
+        plataformas: plataformas.isEmpty ? [Plat(m['plataforma'] as String, m['loja'] as String?)] : plataformas,
         status: m['status'] as String,
       );
+}
+
+/// Vínculo do usuário com outra plataforma de jogos.
+/// ATENÇÃO: [identificador] é só o nome/ID informado pelo usuário, NÃO verificado.
+/// Nenhuma credencial, senha ou token é guardado (ver sync.dart).
+class ContaConectada {
+  final String plataforma, identificador, conectadoEm;
+  const ContaConectada({required this.plataforma, required this.identificador, required this.conectadoEm});
 }
 
 class Usuario {
@@ -238,17 +302,17 @@ const rivais = <(String, int)>[
 ];
 
 /// Busca + estilo + plataforma juntos. Estilos/plataformas vazios = sem filtro.
-/// [plataforma] nulo = ignora filtro de plataforma (catálogo).
+/// [plataformas] = plataformas do jogo; basta uma delas estar no filtro. Vazio = ignora (catálogo).
 bool combina({
   required String nome,
   required List<String> estilos,
-  String? plataforma,
+  List<String> plataformas = const [],
   required String busca,
   required Set<String> filtroEstilos,
   required Set<String> filtroPlataformas,
 }) {
   if (busca.trim().isNotEmpty && !nome.toLowerCase().contains(busca.trim().toLowerCase())) return false;
   if (filtroEstilos.isNotEmpty && !estilos.any(filtroEstilos.contains)) return false;
-  if (plataforma != null && filtroPlataformas.isNotEmpty && !filtroPlataformas.contains(plataforma)) return false;
+  if (plataformas.isNotEmpty && filtroPlataformas.isNotEmpty && !plataformas.any(filtroPlataformas.contains)) return false;
   return true;
 }

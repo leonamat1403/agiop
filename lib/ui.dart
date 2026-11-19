@@ -168,7 +168,9 @@ class Botao extends StatelessWidget {
 }
 
 class Campo extends StatelessWidget {
-  const Campo({super.key, required this.hint, this.ctl, this.erro, this.senha = false, this.onChanged, this.sufixo, this.onSubmit});
+  const Campo({super.key, required this.hint, this.ctl, this.erro, this.senha = false, this.onChanged, this.sufixo, this.onSubmit, this.teclado, this.linhas = 1});
+  final TextInputType? teclado;
+  final int linhas; // >1 = campo de várias linhas
   final String hint;
   final TextEditingController? ctl;
   final String? erro;
@@ -180,6 +182,9 @@ class Campo extends StatelessWidget {
         TextField(
           controller: ctl,
           obscureText: senha,
+          keyboardType: linhas > 1 ? TextInputType.multiline : teclado,
+          minLines: linhas,
+          maxLines: senha ? 1 : linhas,
           onChanged: onChanged,
           onSubmitted: onSubmit,
           style: inter(14, c: Colors.black),
@@ -207,7 +212,8 @@ class Rotulo extends StatelessWidget {
 }
 
 class Opcao extends StatelessWidget {
-  const Opcao(this.texto, this.sel, this.onTap, {super.key, this.sub});
+  const Opcao(this.texto, this.sel, this.onTap, {super.key, this.sub, this.multi = false});
+  final bool multi; // true = caixa de seleção (várias opções); false = botão de rádio
   final String texto;
   final String? sub;
   final bool sel;
@@ -226,7 +232,11 @@ class Opcao extends StatelessWidget {
               border: Border.all(color: sel ? cDestaque : cBorda, width: sel ? 2 : 1),
             ),
             child: Row(children: [
-              Icon(sel ? Icons.check_circle_outline : Icons.circle_outlined, color: sel ? cDestaque : cMudo, size: 22),
+              Icon(
+                multi ? (sel ? Icons.check_box_outlined : Icons.check_box_outline_blank) : (sel ? Icons.check_circle_outline : Icons.circle_outlined),
+                color: sel ? cDestaque : cMudo,
+                size: 22,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -241,6 +251,38 @@ class Opcao extends StatelessWidget {
 }
 
 /// Chips de loja (só PC).
+/// Seleção de UMA OU MAIS plataformas (PC pede também a loja).
+class SeletorPlataformas extends StatelessWidget {
+  const SeletorPlataformas({super.key, required this.valor, required this.onChanged, this.lojaPadrao = 'Steam'});
+  final List<Plat> valor;
+  final ValueChanged<List<Plat>> onChanged;
+  final String lojaPadrao;
+
+  @override
+  Widget build(BuildContext context) {
+    Plat? pc;
+    for (final p in valor) {
+      if (p.nome == 'PC') pc = p;
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (final p in plataformas)
+        Opcao(
+          p,
+          valor.any((x) => x.nome == p),
+          () => onChanged(valor.any((x) => x.nome == p) ? valor.where((x) => x.nome != p).toList() : [...valor, Plat(p, p == 'PC' ? lojaPadrao : null)]),
+          multi: true,
+          sub: p == 'PC' ? pc?.loja : null,
+        ),
+      if (pc != null) ...[
+        const Rotulo('Loja do PC'),
+        Lojas(pc.loja, (l) => onChanged([for (final x in valor) x.nome == 'PC' ? Plat('PC', l) : x])),
+        const SizedBox(height: 8),
+      ],
+      if (valor.isEmpty) Text('Selecione ao menos uma plataforma.', style: inter(12, c: const Color(0xFFF87171))),
+    ]);
+  }
+}
+
 class Lojas extends StatelessWidget {
   const Lojas(this.sel, this.onSel, {super.key});
   final String? sel;
@@ -266,11 +308,8 @@ class Capa extends StatelessWidget {
   final String? asset; // asset local ou URL (API)
   final double? w, h;
 
-  Widget _inicial() => Container(
-        color: cOpcao,
-        alignment: Alignment.center,
-        child: Text(nome.isEmpty ? '?' : nome[0].toUpperCase(), style: jersey((h ?? 60) * .5, c: cDestaque)),
-      );
+  /// Imagem padrão "capa indisponível" (mesma proporção/estilo dos cards).
+  Widget _inicial() => Image.asset('assets/sem_capa.png', fit: BoxFit.cover, semanticLabel: 'Capa indisponível de $nome');
 
   @override
   Widget build(BuildContext context) => ClipRRect(

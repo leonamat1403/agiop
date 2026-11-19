@@ -3,12 +3,17 @@ import 'package:provider/provider.dart';
 
 import 'data.dart';
 import 'state.dart';
+import 'telas.dart';
 import 'ui.dart';
 
 List<String> _estilosDe(String t) =>
     t.split(RegExp(r'[,/·]')).map((e) => e.trim().toUpperCase()).where((e) => e.isNotEmpty).toList();
 
+const _msgJaExiste = 'Este jogo já está na sua biblioteca.';
+
 // ───────────── Adicionar jogo manualmente (3 etapas) ─────────────
+// ESTE FLUXO SÓ CADASTRA JOGOS NOVOS. Jogo que já está na biblioteca é bloqueado aqui;
+// para mudar plataformas/status existe o fluxo separado "Editar na biblioteca".
 class AdicionarScreen extends StatefulWidget {
   const AdicionarScreen({super.key});
   @override
@@ -19,7 +24,9 @@ class _AddState extends State<AdicionarScreen> {
   int _etapa = 1;
   final _nome = TextEditingController(), _dev = TextEditingController(), _estilo = TextEditingController();
   Jogo? _sel;
-  String _plat = 'PC', _loja = 'Steam', _status = 'Jogando';
+  List<Plat> _plats = [const Plat('PC', 'Steam')];
+  String _status = 'Jogando';
+  bool _salvando = false;
 
   @override
   void dispose() {
@@ -36,43 +43,55 @@ class _AddState extends State<AdicionarScreen> {
         _nome.text = j.nome;
         _dev.text = j.desenvolvedora;
         _estilo.text = bonito(j.estilos).replaceAll(' · ', ' / ');
-        _loja = j.lojaPc;
+        _plats = [Plat('PC', j.lojaPc)];
       });
 
-  Future<void> _salvar() async {
-    final st = context.read<AppState>();
-    final nome = _nome.text.trim().toUpperCase();
-    final ref = _sel ?? st.acharNome(nome);
-    final item = ItemBiblioteca(
-      jogoId: ref?.id,
-      capa: ref?.capa,
-      nome: nome,
-      desenvolvedora: _dev.text.trim(),
-      estilos: _estilosDe(_estilo.text),
-      plataforma: _plat,
-      loja: _plat == 'PC' ? _loja : null,
-      status: _status,
-    );
-    if (!await st.adicionar(item)) {
-      if (mounted) aviso(context, '$nome já está na sua biblioteca em $_plat.');
-      return;
-    }
-    if (mounted) Navigator.popUntil(context, (r) => r.settings.name == '/lib');
+  /// Jogo (catálogo/API) correspondente ao que foi digitado, se houver.
+  Jogo? _ref(AppState st) => _sel ?? st.acharNome(_nome.text);
+
+  ItemBiblioteca? _existente(AppState st) {
+    final txt = _nome.text.trim();
+    if (txt.isEmpty) return null;
+    return st.acharItem(jogoId: _ref(st)?.id, nome: txt);
   }
 
-  Widget _cartao() {
+  Future<void> _salvar() async {
+    if (_salvando) return;
+    final st = context.read<AppState>();
     final nome = _nome.text.trim().toUpperCase();
-    final j = _sel ?? context.read<AppState>().acharNome(nome);
-    return CartaoJogo(nome, bonito(_estilosDe(_estilo.text)), asset: j?.capa);
+    final ref = _ref(st);
+    setState(() => _salvando = true);
+    final ok = await st.adicionar(ItemBiblioteca(
+      jogoId: ref?.id,
+      capa: ref?.capa,
+      nome: ref?.nome ?? nome,
+      desenvolvedora: _dev.text.trim(),
+      estilos: _estilosDe(_estilo.text),
+      plataformas: _plats,
+      status: _status,
+    ));
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _salvando = false);
+      aviso(context, _msgJaExiste);
+      return;
+    }
+    Navigator.popUntil(context, (r) => r.settings.name == '/lib');
+  }
+
+  Widget _cartao(AppState st) {
+    final nome = _nome.text.trim().toUpperCase();
+    return CartaoJogo(nome, bonito(_estilosDe(_estilo.text)), asset: _ref(st)?.capa);
   }
 
   @override
   Widget build(BuildContext context) {
-    final txt = _nome.text.trim();
     final st = context.watch<AppState>();
+    final txt = _nome.text.trim();
+    final existente = _existente(st);
     final sug = txt.isEmpty || st.acharNome(txt) != null
         ? <Jogo>[]
-        : st.catalogoTodo.where((j) => j.nome.toLowerCase().contains(txt.toLowerCase())).take(5).toList();
+        : st.catalogoTodo.where((j) => normalizar(j.nome).contains(normalizar(txt))).take(5).toList();
     return PopScope(
       canPop: _etapa == 1,
       onPopInvokedWithResult: (didPop, _) {
@@ -81,9 +100,9 @@ class _AddState extends State<AdicionarScreen> {
       child: Tela(
         onBack: _voltar,
         acao: switch (_etapa) {
-          1 => Botao('Continuar', txt.isEmpty ? null : () => setState(() => _etapa = 2), primario: true),
-          2 => Botao('Continuar', () => setState(() => _etapa = 3), primario: true),
-          _ => Botao('Adicionar à biblioteca', _salvar, primario: true),
+          1 => Botao('Continuar', txt.isEmpty || existente != null ? null : () => setState(() => _etapa = 2), primario: true),
+          2 => Botao('Continuar', _plats.isEmpty ? null : () => setState(() => _etapa = 3), primario: true),
+          _ => Botao(_salvando ? 'Salvando…' : 'Adicionar à biblioteca', _salvando ? null : _salvar, primario: true),
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 16), children: [
           Barra(_etapa),
@@ -95,53 +114,67 @@ class _AddState extends State<AdicionarScreen> {
             Campo(
               hint: 'Ex.: OVERWATCH',
               ctl: _nome,
+              erro: existente != null ? _msgJaExiste : null,
               onChanged: (v) => setState(() {
-                if (_sel != null && _sel!.nome.toLowerCase() != v.trim().toLowerCase()) _sel = null;
+                if (_sel != null && normalizar(_sel!.nome) != normalizar(v)) _sel = null;
               }),
             ),
-            for (final j in sug)
-              InkWell(
-                onTap: () => _escolher(j),
-                child: Container(
-                  margin: const EdgeInsets.only(top: 6),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: cOpcao, borderRadius: BorderRadius.circular(8), border: Border.all(color: cBorda)),
-                  child: Row(children: [
-                    Capa(j.nome, asset: j.capa, w: 44, h: 30),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(j.nome, style: inter(14))),
-                    Text('do catálogo', style: inter(12, c: cDestaque)),
-                  ]),
+            if (existente != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => Navigator.push(context, rota('/meujogo', MeuJogoScreen(existente.id!))),
+                  child: Text('Para mudar plataformas ou status: Editar na biblioteca', style: inter(12, c: cDestaque, w: FontWeight.w700)),
                 ),
               ),
+            for (final j in sug)
+              Builder(builder: (_) {
+                final ja = st.acharItem(jogoId: j.id, nome: j.nome) != null;
+                return Opacity(
+                  opacity: ja ? .5 : 1,
+                  child: InkWell(
+                    onTap: ja ? () => aviso(context, _msgJaExiste) : () => _escolher(j),
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: cOpcao, borderRadius: BorderRadius.circular(8), border: Border.all(color: cBorda)),
+                      child: Row(children: [
+                        Capa(j.nome, asset: j.capa, w: 44, h: 30),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(j.nome, maxLines: 1, overflow: TextOverflow.ellipsis, style: inter(14))),
+                        Text(ja ? 'já na biblioteca' : 'do catálogo', style: inter(12, c: cDestaque)),
+                      ]),
+                    ),
+                  ),
+                );
+              }),
             const Rotulo('Desenvolvedora'),
             Campo(hint: 'Opcional', ctl: _dev),
             const Rotulo('Estilo'),
             Campo(hint: 'Ex.: FPS / Multiplayer', ctl: _estilo, onChanged: (_) => setState(() {})),
-            if (txt.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: _cartao()),
+            if (txt.isNotEmpty && existente == null) Padding(padding: const EdgeInsets.only(top: 20), child: _cartao(st)),
           ],
           if (_etapa == 2) ...[
             Text('ONDE VOCÊ JOGA?', style: jersey(32)),
             const SizedBox(height: 14),
-            _cartao(),
+            _cartao(st),
             const SizedBox(height: 14),
-            Text('Escolha a plataforma deste jogo.', style: inter(12, c: cMudo)),
+            Text('Escolha uma ou mais plataformas deste jogo.', style: inter(12, c: cMudo)),
             const SizedBox(height: 14),
-            for (final p in plataformas) Opcao(p, _plat == p, () => setState(() => _plat = p), sub: p == 'PC' && _plat == 'PC' ? _loja : null),
-            if (_plat == 'PC') ...[const Rotulo('Loja'), Lojas(_loja, (l) => setState(() => _loja = l))],
+            SeletorPlataformas(valor: _plats, lojaPadrao: _ref(st)?.lojaPc ?? 'Steam', onChanged: (v) => setState(() => _plats = v)),
           ],
           if (_etapa == 3) ...[
             Text('CONFIRMAR JOGO', style: jersey(32)),
             const SizedBox(height: 14),
-            _cartao(),
+            _cartao(st),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(color: cSuperficie, borderRadius: BorderRadius.circular(4)),
-              child: Row(children: [
-                Text('Plataforma', style: inter(12, c: cMudo)),
-                const Spacer(),
-                Text(_plat == 'PC' ? 'PC · $_loja' : _plat, style: inter(12, c: cDestaque, w: FontWeight.w700)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_plats.length == 1 ? 'Plataforma' : 'Plataformas', style: inter(12, c: cMudo)),
+                const SizedBox(width: 16),
+                Expanded(child: Text(_plats.map((p) => p.rotulo).join('\n'), textAlign: TextAlign.right, style: inter(12, c: cDestaque, w: FontWeight.w700))),
               ]),
             ),
             const SizedBox(height: 16),
@@ -166,26 +199,28 @@ class AdicionarCatalogo extends StatefulWidget {
 }
 
 class _AddCatState extends State<AdicionarCatalogo> {
-  late String _plat = 'PC · ${widget.j.lojaPc}';
+  late List<Plat> _plats = [Plat('PC', widget.j.lojaPc)];
   String _status = 'Jogando';
-
-  List<String> get _opcoes => [for (final l in lojasPc) 'PC · $l', ...plataformas.skip(1)];
+  bool _salvando = false;
 
   Future<void> _confirmar() async {
+    if (_salvando) return;
     final j = widget.j;
-    final pc = _plat.startsWith('PC · ');
+    setState(() => _salvando = true);
     final item = ItemBiblioteca(
       jogoId: j.id,
       capa: j.capa,
       nome: j.nome,
       desenvolvedora: j.desenvolvedora,
       estilos: j.estilos,
-      plataforma: pc ? 'PC' : _plat,
-      loja: pc ? _plat.substring(5) : null,
+      plataformas: _plats,
       status: _status,
     );
     if (!await context.read<AppState>().adicionar(item)) {
-      if (mounted) aviso(context, '${j.nome} já está na sua biblioteca em ${item.plataforma}.');
+      if (mounted) {
+        setState(() => _salvando = false);
+        aviso(context, _msgJaExiste);
+      }
       return;
     }
     if (mounted) Navigator.pushReplacement(context, rota('/sucesso', SucessoScreen(item)));
@@ -194,35 +229,37 @@ class _AddCatState extends State<AdicionarCatalogo> {
   @override
   Widget build(BuildContext context) {
     final j = widget.j;
-    final outros = context.watch<AppState>().itens.where((i) => i.nome != j.nome).map((i) => i.nome).toSet().toList();
+    final st = context.watch<AppState>();
+    final existente = st.acharItem(jogoId: j.id, nome: j.nome);
+    final outros = st.itens.where((i) => i.nome != j.nome).map((i) => i.nome).toSet().toList();
     return Tela(
-      acao: Botao('Confirmar adição', _confirmar, primario: true),
+      acao: existente != null
+          ? Botao('Editar na biblioteca', () => Navigator.pushReplacement(context, rota('/meujogo', MeuJogoScreen(existente.id!))), primario: true)
+          : Botao(_salvando ? 'Salvando…' : 'Confirmar adição', _salvando || _plats.isEmpty ? null : _confirmar, primario: true),
       child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 16), children: [
         Text('ADICIONAR À BIBLIOTECA', style: jersey(32)),
         const SizedBox(height: 16),
         CartaoJogo(j.nome, bonito(j.estilos), asset: j.capa),
         const SizedBox(height: 20),
-        Text('Plataforma', style: jersey(20)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-          child: DropdownButton<String>(
-            value: _plat,
-            isExpanded: true,
-            underline: const SizedBox(),
-            dropdownColor: Colors.white,
-            style: inter(14, c: Colors.black),
-            items: [for (final o in _opcoes) DropdownMenuItem(value: o, child: Text(o))],
-            onChanged: (v) => setState(() => _plat = v ?? _plat),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text('Como está sua jornada?', style: jersey(20)),
-        const SizedBox(height: 8),
-        for (final s in statusLista) Opcao(s, _status == s, () => setState(() => _status = s)),
-        const SizedBox(height: 8),
-        Text(outros.isEmpty ? 'Salve ${j.nome} na sua coleção.' : 'Salve ${j.nome} junto de ${outros.join(', ')} na sua coleção.', style: inter(12, c: cMudo)),
+        if (existente != null)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: cOpcao, borderRadius: BorderRadius.circular(8), border: Border.all(color: cDestaque)),
+            child: Text('$_msgJaExiste (${existente.rotulos}). Para mudar plataformas ou status, use "Editar na biblioteca".', style: inter(14)),
+          )
+        else ...[
+          Text('Plataformas', style: jersey(20)),
+          const SizedBox(height: 4),
+          Text('Escolha uma ou mais.', style: inter(12, c: cMudo)),
+          const SizedBox(height: 8),
+          SeletorPlataformas(valor: _plats, lojaPadrao: j.lojaPc, onChanged: (v) => setState(() => _plats = v)),
+          const SizedBox(height: 12),
+          Text('Como está sua jornada?', style: jersey(20)),
+          const SizedBox(height: 8),
+          for (final s in statusLista) Opcao(s, _status == s, () => setState(() => _status = s)),
+          const SizedBox(height: 8),
+          Text(outros.isEmpty ? 'Salve ${j.nome} na sua coleção.' : 'Salve ${j.nome} junto de ${outros.join(', ')} na sua coleção.', style: inter(12, c: cMudo)),
+        ],
       ]),
     );
   }
@@ -256,7 +293,7 @@ class SucessoScreen extends StatelessWidget {
         const SizedBox(height: 20),
         Text(item.nome, textAlign: TextAlign.center, style: jersey(26)),
         const SizedBox(height: 4),
-        Text('${item.plataformaLoja} · ${item.status}'.toUpperCase(), textAlign: TextAlign.center, style: inter(12, c: cDestaque, w: FontWeight.w700)),
+        Text('${item.plataformas.map((p) => p.rotulo).join(' · ')} · ${item.status}'.toUpperCase(), textAlign: TextAlign.center, style: inter(12, c: cDestaque, w: FontWeight.w700)),
         const SizedBox(height: 16),
         Text('Pronto, $nome! ${item.nome} agora faz parte da sua biblioteca de jogos.', textAlign: TextAlign.center, style: inter(12, c: cMudo)),
         const SizedBox(height: 16),

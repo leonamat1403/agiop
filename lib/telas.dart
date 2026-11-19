@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'adicionar.dart';
+import 'contas.dart';
 import 'data.dart';
 import 'ranking.dart';
 import 'state.dart';
@@ -55,19 +56,43 @@ class LoginScreen extends StatefulWidget {
 class _LoginState extends State<LoginScreen> {
   final _u = TextEditingController(), _s = TextEditingController();
   String? _eu, _es;
+  bool _entrando = false;
 
   Future<void> _entrar() async {
+    if (_entrando) return;
     setState(() {
-      _eu = _u.text.trim().isEmpty ? 'Informe o nome de usuário' : null;
+      _eu = _u.text.trim().isEmpty ? 'Informe o nome de usuário ou e-mail' : null;
       _es = _s.text.isEmpty ? 'Informe a senha' : null;
     });
     if (_eu != null || _es != null) return;
-    await _ir(_u.text.trim());
+    setState(() => _entrando = true);
+    final erro = await context.read<AppState>().login(_u.text, _s.text);
+    if (!mounted) return;
+    if (erro != null) {
+      setState(() {
+        _entrando = false;
+        _es = erro;
+      });
+      return;
+    }
+    Navigator.pushReplacement(context, rota('/lib', const BibliotecaScreen()));
   }
 
-  Future<void> _ir(String nome, {bool visitante = false}) async {
-    await context.read<AppState>().entrar(nome, ehVisitante: visitante);
+  Future<void> _visitante() async {
+    await context.read<AppState>().entrarVisitante();
     if (mounted) Navigator.pushReplacement(context, rota('/lib', const BibliotecaScreen()));
+  }
+
+  Future<void> _criarConta() async {
+    final novo = await Navigator.push<String>(context, rota('/cadastro', const CadastroScreen()));
+    if (novo != null && mounted) {
+      setState(() {
+        _u.text = novo;
+        _s.clear();
+        _eu = _es = null;
+      });
+      aviso(context, 'Conta criada com sucesso. Faça login para entrar.');
+    }
   }
 
   @override
@@ -93,15 +118,17 @@ class _LoginState extends State<LoginScreen> {
                 const SizedBox(height: 18),
                 Campo(hint: 'Senha', ctl: _s, erro: _es, senha: true, onSubmit: (_) => _entrar()),
                 const SizedBox(height: 18),
-                Botao('Login', _entrar),
-                const SizedBox(height: 24),
+                Botao(_entrando ? 'Entrando…' : 'Login', _entrando ? null : _entrar),
+                const SizedBox(height: 12),
+                Botao('Criar conta', _entrando ? null : _criarConta, primario: true),
+                const SizedBox(height: 12),
                 TextButton(
                   onPressed: () => showDialog<void>(
                     context: context,
                     builder: (_) => AlertDialog(
                       backgroundColor: cSuperficie,
                       title: Text('Esqueci minha senha', style: jersey(26)),
-                      content: Text('Este é um protótipo: qualquer usuário e senha não vazios entram. Não há recuperação de senha.', style: inter(14)),
+                      content: Text('Este protótipo funciona sem servidor, então não há envio de e-mail nem recuperação de senha. Crie uma nova conta ou entre como visitante.', style: inter(14)),
                       actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text('Entendi', style: inter(14, c: cDestaque)))],
                     ),
                   ),
@@ -109,7 +136,7 @@ class _LoginState extends State<LoginScreen> {
                 ),
                 // visitante: sem senha, dados temporários (apagados a cada entrada)
                 TextButton(
-                  onPressed: () => _ir('Visitante', visitante: true),
+                  onPressed: _entrando ? null : _visitante,
                   child: Text('Entrar como visitante', style: inter(14, c: cDestaque, w: FontWeight.w600)),
                 ),
               ]),
@@ -190,7 +217,7 @@ class _BibState extends State<BibliotecaScreen> {
                 nome: i.nome,
                 w: w,
                 asset: i.imagem,
-                sub: i.plataformaLoja,
+                sub: i.subCard,
                 status: i.status,
                 onTap: () => Navigator.push(context, rota('/meujogo', MeuJogoScreen(i.id!))),
               ),
@@ -315,14 +342,21 @@ class CatalogoDetalhe extends StatelessWidget {
   final Jogo j;
   @override
   Widget build(BuildContext context) {
-    final meus = context.watch<AppState>().itens.where((i) => i.jogoId == j.id).toList();
+    // já está na biblioteca? (ID do catálogo/API, depois nome normalizado)
+    final meu = context.watch<AppState>().acharItem(jogoId: j.id, nome: j.nome);
     return Tela(
-      acao: Botao('Adicionar à biblioteca', () => Navigator.push(context, rota('/addcat', AdicionarCatalogo(j))), primario: true),
+      // jogo já cadastrado não é oferecido como novo: o botão leva para a edição
+      acao: meu == null
+          ? Botao('Adicionar à biblioteca', () => Navigator.push(context, rota('/addcat', AdicionarCatalogo(j))), primario: true)
+          : Botao('Editar na biblioteca', () => Navigator.push(context, rota('/meujogo', MeuJogoScreen(meu.id!))), primario: true),
       child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 16), children: [
         _blocoDetalhe('CATÁLOGO / ${j.estilos.first}', j.nome, j.capa, '${j.estilos.join(' · ')} · ${j.onde}', j.descricao,
             [('Desenvolvedora', j.desenvolvedora), ('Lançamento', '${j.lancamento}')]),
-        if (meus.isNotEmpty)
-          Padding(padding: const EdgeInsets.only(top: 12), child: Text('Na sua biblioteca: ${meus.map((i) => i.plataformaLoja).join(', ')}', style: inter(12, c: cDestaque))),
+        if (meu != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text('Este jogo já está na sua biblioteca (${meu.rotulos}).', style: inter(12, c: cDestaque, w: FontWeight.w700)),
+          ),
       ]),
     );
   }
@@ -334,8 +368,7 @@ class MeuJogoScreen extends StatelessWidget {
 
   Future<void> _editar(BuildContext context, ItemBiblioteca it) async {
     final st = context.read<AppState>();
-    var plat = it.plataforma;
-    var loja = it.loja ?? lojasPc.first;
+    var plats = List<Plat>.of(it.plataformas);
     var status = it.status;
     await showModalBottomSheet<void>(
       context: context,
@@ -347,21 +380,16 @@ class MeuJogoScreen extends StatelessWidget {
           child: SingleChildScrollView(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text('EDITAR NA BIBLIOTECA', style: jersey(26)),
-              const Rotulo('Plataforma'),
-              for (final p in plataformas) Opcao(p, plat == p, () => set(() => plat = p)),
-              if (plat == 'PC') ...[const Rotulo('Loja'), Lojas(loja, (l) => set(() => loja = l)), const SizedBox(height: 8)],
+              const Rotulo('Plataformas (uma ou mais)'),
+              SeletorPlataformas(valor: plats, onChanged: (v) => set(() => plats = v)),
               const Rotulo('Situação'),
               for (final s in statusLista) Opcao(s, status == s, () => set(() => status = s)),
               const SizedBox(height: 8),
-              Botao('Salvar alterações', () async {
-                final ok = await st.editar(it.copyWith(plataforma: plat, loja: loja, status: status));
+              Botao('Salvar alterações', plats.isEmpty ? null : () async {
+                await st.editar(it.copyWith(plataformas: plats, status: status));
                 if (!sheet.mounted) return;
-                if (ok) {
-                  Navigator.pop(sheet);
-                  aviso(context, '${it.nome} atualizado');
-                } else {
-                  aviso(sheet, 'Esse jogo já está na biblioteca nessa plataforma.');
-                }
+                Navigator.pop(sheet);
+                aviso(context, '${it.nome} atualizado');
               }),
               const SizedBox(height: 8),
               Botao('Remover jogo', () async {
@@ -390,9 +418,20 @@ class MeuJogoScreen extends StatelessWidget {
     return Tela(
       acao: Botao('Editar na biblioteca', () => _editar(context, it)),
       child: ListView(padding: const EdgeInsets.fromLTRB(24, 20, 24, 16), children: [
-        _blocoDetalhe('BIBLIOTECA / MEU JOGO', it.nome, it.imagem, [...it.estilos, it.plataforma].join(' · '),
+        _blocoDetalhe('BIBLIOTECA / MEU JOGO', it.nome, it.imagem, [...it.estilos, it.plataformasResumo].join(' · '),
             j?.descricao ?? 'Jogo adicionado manualmente à sua biblioteca.',
-            [('Desenvolvedora', it.desenvolvedora.isEmpty ? '—' : it.desenvolvedora), ('Minha coleção', '${it.status} · ${it.plataforma}')]),
+            [('Desenvolvedora', it.desenvolvedora.isEmpty ? '—' : it.desenvolvedora), ('Minha coleção', it.status)]),
+        const SizedBox(height: 10),
+        // todas as plataformas vinculadas, com a loja do PC
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final p in it.plataformas)
+            Chip(
+              label: Text(p.rotulo, style: inter(12, w: FontWeight.w600)),
+              backgroundColor: cOpcao,
+              side: const BorderSide(color: cDestaque),
+              visualDensity: VisualDensity.compact,
+            ),
+        ]),
       ]),
     );
   }
@@ -476,7 +515,7 @@ class _PerfilState extends State<PerfilScreen> {
               child: Row(children: [
                 Capa(st.itens[k].nome, asset: st.itens[k].imagem, w: 72, h: 46),
                 const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(st.itens[k].nome, style: jersey(18)), Text(st.itens[k].plataformaLoja, style: inter(12, c: cMudo))])),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(st.itens[k].nome, style: jersey(18)), Text(st.itens[k].subCard, style: inter(12, c: cMudo))])),
                 Text(st.itens[k].status.toUpperCase(), style: inter(12, c: cDestaque, w: FontWeight.w700)),
               ]),
             ),
@@ -485,6 +524,11 @@ class _PerfilState extends State<PerfilScreen> {
         if (n > 0) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${n == 1 ? 'Um jogo' : '$n jogos'}, uma biblioteca. Continue sua coleção explorando o catálogo.', style: inter(12, c: cMudo))),
         const SizedBox(height: 16),
         Botao('Ver biblioteca completa', () => Navigator.popUntil(context, (r) => r.settings.name == '/lib')),
+        const SizedBox(height: 28),
+        if (st.visitante)
+          Text('Contas conectadas e sincronização ficam disponíveis ao entrar com uma conta cadastrada.', style: inter(12, c: cMudo))
+        else
+          const ContasConectadas(),
         const SizedBox(height: 28),
         Text('EDITAR PERFIL', style: jersey(22)),
         const Rotulo('Avatar'),
